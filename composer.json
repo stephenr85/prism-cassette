@@ -1,0 +1,55 @@
+{
+    "name": "rushing/prism-cassette",
+    "description": "Deterministic Prism record/replay for tests and application code",
+    "keywords": ["laravel", "prism", "llm", "fixtures", "record", "replay"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Stephen Rushing",
+            "email": "stephen@rushing.dev"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/contracts": "^11.0|^12.0",
+        "prism-php/prism": "^0.100"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "pestphp/pest": "^2.0|^3.0",
+        "pestphp/pest-plugin-laravel": "^2.0|^3.0",
+        "laravel/pint": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rushing\\PrismCassette\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rushing\\PrismCassette\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Rushing\\PrismCassette\\CassetteServiceProvider"
+            ],
+            "aliases": {
+                "Cassette": "Rushing\\PrismCassette\\Facades\\Cassette"
+            }
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "lint": "vendor/bin/pint"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
