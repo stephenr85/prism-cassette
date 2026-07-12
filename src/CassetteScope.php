@@ -3,6 +3,7 @@
 namespace Rushing\PrismCassette;
 
 use Closure;
+use Rushing\PrismCassette\Exceptions\CassetteDisarmedException;
 
 class CassetteScope
 {
@@ -56,6 +57,13 @@ class CassetteScope
 
         if ($mode === 'passthrough') {
             return $fn();
+        }
+
+        // A taping frame is only readable by an armed CassetteProvider. If boot
+        // armed nothing, pushing the frame would silently run every call live —
+        // fail loudly instead.
+        if (! $this->manager->isArmed()) {
+            throw CassetteDisarmedException::forScope($this->group, $mode);
         }
 
         $frame = new CassetteContextFrame(

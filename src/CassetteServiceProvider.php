@@ -7,6 +7,7 @@ use Prism\Prism\PrismManager;
 use Rushing\PrismCassette\Commands\CassetteExportCommand;
 use Rushing\PrismCassette\Commands\CassetteImportCommand;
 use Rushing\PrismCassette\Commands\CassettePruneCommand;
+use Rushing\PrismCassette\Commands\CassetteStatusCommand;
 use Rushing\PrismCassette\Commands\CassetteVerifyCommand;
 use Rushing\PrismCassette\Contracts\CassetteKeyResolver;
 use Rushing\PrismCassette\Contracts\CassetteStore;
@@ -40,6 +41,7 @@ class CassetteServiceProvider extends ServiceProvider
                 CassetteImportCommand::class,
                 CassetteVerifyCommand::class,
                 CassettePruneCommand::class,
+                CassetteStatusCommand::class,
             ]);
         }
 
@@ -48,11 +50,9 @@ class CassetteServiceProvider extends ServiceProvider
 
     protected function armProviders(): void
     {
-        // 'passthrough' in config means skip cassette overhead entirely.
-        if (config('cassette.mode') === 'passthrough') {
-            return;
-        }
-
+        // Always arm — passthrough is a per-call decision inside CassetteProvider
+        // (an unarmed decorator made explicit ->record()/->replay() scopes and
+        // per-store modes silently inert, running live and recording nothing).
         $configured = config('cassette.providers', '*');
         $providerKeys = $configured === '*'
             ? $this->discoverProviderKeys()
@@ -61,6 +61,7 @@ class CassetteServiceProvider extends ServiceProvider
         // Resolve the real provider BEFORE calling extend() to avoid circular dependency.
         $prismManager = $this->app->make(PrismManager::class);
         $keyResolver = $this->app->make(CassetteKeyResolver::class);
+        $manager = $this->app->make(CassetteManager::class);
 
         foreach ($providerKeys as $providerKey) {
             try {
@@ -80,8 +81,10 @@ class CassetteServiceProvider extends ServiceProvider
                 mode: 'scope',
                 providerName: $providerKey,
                 keyResolver: $keyResolver,
-                manager: $this->app->make(CassetteManager::class),
+                manager: $manager,
             ));
+
+            $manager->markArmed($providerKey);
         }
     }
 

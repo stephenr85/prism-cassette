@@ -41,7 +41,8 @@ return [
     // Global mode: 'replay' | 'record' | 'passthrough'
     // 'replay'      — miss throws CassetteMissException (safe default for CI)
     // 'record'      — miss calls the live provider, writes cassette, returns result
-    // 'passthrough' — cassette decorator is bypassed entirely
+    // 'passthrough' — calls run live and untaped (per-call decision; scopes and
+    //                 per-store modes still override it)
     'mode' => env('CASSETTE_MODE', 'replay'),
 
     // Which named store to use when no store is specified in the scope
@@ -78,9 +79,11 @@ return [
 |---|---|---|
 | `replay` | throws `CassetteMissException` | CI, production — no surprise live calls |
 | `record` | calls live provider, writes cassette | first run, re-recording |
-| `passthrough` | skips cassette entirely | load-testing, profiling |
+| `passthrough` | calls run live, untaped | load-testing, profiling, interactive dev |
 
 Per-store mode overrides the global: add `'mode' => 'record'` to any store config.
+
+The global mode is a **default, not a disarm switch**: an explicit scope override (`->record()`, `->replay()`) or a per-store `mode` always wins, including under global `passthrough`. Passthrough is decided per call inside the decorator, not at boot.
 
 In tests, `runningUnitTests()` forces `replay` regardless of the global. To record inside a test, call `->record()` explicitly on the scope (see [Re-recording in tests](#re-recording-in-tests)).
 
@@ -88,7 +91,19 @@ In tests, `runningUnitTests()` forces `replay` regardless of the global. To reco
 
 ## Arming providers
 
-`CassetteServiceProvider` extends every Prism provider with the cassette decorator automatically on boot. Providers that aren't configured (missing API key, etc.) are skipped silently. The decorator operates in `'scope'` mode: it passes through transparently unless a cassette scope is active.
+`CassetteServiceProvider` extends every Prism provider with the cassette decorator automatically on boot — **in every mode, including global `passthrough`**. Providers that aren't configured (missing API key, etc.) are skipped silently. The decorator operates in `'scope'` mode: it passes through transparently unless a cassette scope is active or a store/global mode says to tape.
+
+The armed decorator's passthrough path costs ~5–6 µs per Prism call (measured against a bare delegate) — noise next to any live LLM call, which is why there is no boot-time disarm.
+
+If boot armed **no** providers at all (misconfigured `cassette.providers`, no resolvable Prism providers), any scope that would record or replay throws `CassetteDisarmedException` instead of silently running live. Plain passthrough scopes never throw.
+
+Inspect the arming state at any time:
+
+```
+php artisan cassette:status
+```
+
+which prints the global mode, the armed provider keys, and each store's driver, resolved mode, and location.
 
 ---
 

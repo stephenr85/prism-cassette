@@ -9,7 +9,8 @@ return [
     |--------------------------------------------------------------------------
     | 'replay' — miss throws CassetteMissException (default, safe for CI)
     | 'record' — miss calls the live provider, writes cassette, returns result
-    | 'passthrough' — cassette decorator is bypassed entirely
+    | 'passthrough' — calls run live and untaped; a per-call decision, so scope
+    |                 overrides and per-store modes still take effect
     */
     'mode' => env('CASSETTE_MODE', 'replay'),
 

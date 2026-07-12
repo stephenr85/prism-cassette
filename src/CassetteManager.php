@@ -15,7 +15,26 @@ class CassetteManager
     /** @var array<string, CassetteStore> */
     protected array $resolved = [];
 
+    /** @var string[] */
+    protected array $armedProviders = [];
+
     public function __construct(protected Application $app) {}
+
+    public function markArmed(string $providerKey): void
+    {
+        $this->armedProviders[] = $providerKey;
+    }
+
+    public function isArmed(): bool
+    {
+        return $this->armedProviders !== [];
+    }
+
+    /** @return string[] */
+    public function armedProviders(): array
+    {
+        return $this->armedProviders;
+    }
 
     public function store(?string $name = null): CassetteStore
     {
