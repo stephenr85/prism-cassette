@@ -2,6 +2,7 @@
 
 namespace Rushing\PrismCassette;
 
+use Generator;
 use Illuminate\Support\Collection;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Embeddings\Request as EmbeddingsRequest;
@@ -96,6 +97,39 @@ class CassetteProvider extends Provider
         $this->dispatchResolved('text', $request->provider(), $request->model(), $response->usage, false, $mode, $key, $recordedAt);
 
         return $response;
+    }
+
+    /**
+     * Stream a text completion.
+     *
+     * The base Provider::stream() throws "unsupported", so without this override any
+     * ->asStream() call against a cassette-armed provider dies before a single token —
+     * which is exactly what broke Threads chat (empty assistant bubbles). We proxy the
+     * live provider's stream for passthrough and record; stream-frame taping/replay is a
+     * deliberate follow-up, so replay fails loud rather than masquerading as empty output.
+     */
+    #[\Override]
+    public function stream(TextRequest $request): Generator
+    {
+        [$store, $mode] = $this->resolve('text', $this->keyResolver->forText($request));
+
+        // Passthrough (store === null): proxy the real provider's stream transparently.
+        // Record (or scope-record): proxy live too — stream-frame serialization is a
+        // scoped follow-up, so we stream through without writing a stream cassette
+        // (non-streaming text/structured/embeddings still record as before).
+        if ($store === null || $mode !== 'replay') {
+            yield from $this->delegate->stream($request);
+
+            return;
+        }
+
+        // Replay: streaming fixtures aren't implemented yet. Fail loud so a missing
+        // stream cassette never silently degrades to an empty completion.
+        throw new \RuntimeException(
+            "prism-cassette: streaming replay is not yet supported (provider={$this->providerName}, "
+            ."model={$request->model()}). Use CASSETTE_MODE=passthrough for streaming completions, "
+            .'or record/replay the non-streaming text() path instead.'
+        );
     }
 
     #[\Override]
