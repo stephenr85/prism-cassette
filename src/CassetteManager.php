@@ -24,6 +24,9 @@ class CassetteManager
     /** @var string[] */
     protected array $armedProviders = [];
 
+    /** @var array<string, true> non-Prism capabilities declared directly tape-able (see armCapability). */
+    protected array $armedCapabilities = [];
+
     /** @var array<string, CassetteSerializer> capability => serializer (the extension seam). */
     protected array $serializers = [];
 
@@ -173,15 +176,43 @@ class CassetteManager
         $this->armedProviders[] = $providerKey;
     }
 
+    /**
+     * Declare a NON-Prism capability directly tape-able. A capability Prism has no slot for (e.g.
+     * PrismPlus rerank) tapes through {@see tape()} on this manager directly, NOT through a
+     * {@see CassetteProvider} decorator, so it needs no Prism provider armed at boot to record/replay.
+     * But the scope guard ({@see isArmed()}) still has to know something is tape-able — so a downstream
+     * package that owns such a capability calls this once (alongside {@see registerSerializer()}) and
+     * its record/replay scopes work with no decoy Prism provider configured just to satisfy the guard.
+     */
+    public function armCapability(string $capability): void
+    {
+        $this->armedCapabilities[$capability] = true;
+    }
+
+    /**
+     * Whether anything is tape-able: a Prism provider armed via a {@see CassetteProvider} decorator, or
+     * a non-Prism capability declared directly tape-able via {@see armCapability()}. The scope guard
+     * fails loud when nothing is armed, so a record/replay scope can never silently run every call live.
+     */
     public function isArmed(): bool
     {
-        return $this->armedProviders !== [];
+        return $this->armedProviders !== [] || $this->armedCapabilities !== [];
     }
 
     /** @return string[] */
     public function armedProviders(): array
     {
         return $this->armedProviders;
+    }
+
+    /**
+     * The non-Prism capabilities declared directly tape-able via {@see armCapability()}.
+     *
+     * @return string[]
+     */
+    public function armedCapabilities(): array
+    {
+        return array_keys($this->armedCapabilities);
     }
 
     public function store(?string $name = null): CassetteStore

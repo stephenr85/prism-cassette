@@ -17,11 +17,15 @@ class CassetteStatusCommand extends Command
         $this->line('Environment:  '.app()->environment());
 
         $armed = $manager->armedProviders();
+        $capabilities = $manager->armedCapabilities();
 
-        if ($armed === []) {
+        if ($armed === [] && $capabilities === []) {
             $this->warn('Armed:        none — scopes that record or replay will throw CassetteDisarmedException');
         } else {
-            $this->line('Armed:        '.implode(', ', $armed));
+            $this->line('Armed:        '.($armed === [] ? '(no Prism providers)' : implode(', ', $armed)));
+            if ($capabilities !== []) {
+                $this->line('Capabilities: '.implode(', ', $capabilities).' (non-Prism, directly tape-able)');
+            }
         }
 
         $this->newLine();
