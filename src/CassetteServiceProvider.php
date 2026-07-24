@@ -11,6 +11,8 @@ use Rushing\PrismCassette\Commands\CassetteStatusCommand;
 use Rushing\PrismCassette\Commands\CassetteVerifyCommand;
 use Rushing\PrismCassette\Contracts\CassetteKeyResolver;
 use Rushing\PrismCassette\Contracts\CassetteStore;
+use Rushing\PrismCassette\Serializers\SpeechToTextSerializer;
+use Rushing\PrismCassette\Serializers\TextToSpeechSerializer;
 use Rushing\PrismCassette\Support\CassetteKey;
 
 class CassetteServiceProvider extends ServiceProvider
@@ -20,6 +22,14 @@ class CassetteServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/cassette.php', 'cassette');
 
         $this->app->singleton(CassetteManager::class);
+
+        $this->app->afterResolving(CassetteManager::class, function (CassetteManager $manager): void {
+            // Prism-native audio capabilities: their request/response types are Prism's, so their
+            // serializers ship here. Downstream, non-Prism capabilities register their own via the
+            // same seam (CassetteManager::registerSerializer), guarded by class_exists.
+            $manager->registerSerializer('tts', new TextToSpeechSerializer);
+            $manager->registerSerializer('stt', new SpeechToTextSerializer);
+        });
 
         $this->app->bind(CassetteStore::class, fn ($app) => $app->make(CassetteManager::class)->store());
 

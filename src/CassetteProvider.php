@@ -4,6 +4,10 @@ namespace Rushing\PrismCassette;
 
 use Generator;
 use Illuminate\Support\Collection;
+use Prism\Prism\Audio\AudioResponse as TextToSpeechResponse;
+use Prism\Prism\Audio\SpeechToTextRequest;
+use Prism\Prism\Audio\TextResponse as SpeechToTextResponse;
+use Prism\Prism\Audio\TextToSpeechRequest;
 use Prism\Prism\Contracts\Message;
 use Prism\Prism\Embeddings\Request as EmbeddingsRequest;
 use Prism\Prism\Embeddings\Response as EmbeddingsResponse;
@@ -17,10 +21,14 @@ use Prism\Prism\ValueObjects\Embedding;
 use Prism\Prism\ValueObjects\EmbeddingsUsage;
 use Prism\Prism\ValueObjects\Meta;
 use Prism\Prism\ValueObjects\Usage;
+use RuntimeException;
 use Rushing\PrismCassette\Contracts\CassetteKeyResolver;
+use Rushing\PrismCassette\Contracts\CassetteSerializer;
 use Rushing\PrismCassette\Contracts\CassetteStore;
 use Rushing\PrismCassette\Events\CassetteResolved;
 use Rushing\PrismCassette\Exceptions\CassetteMissException;
+use Rushing\PrismCassette\Serializers\SpeechToTextSerializer;
+use Rushing\PrismCassette\Serializers\TextToSpeechSerializer;
 use Rushing\PrismCassette\Support\CassetteId;
 use Rushing\PrismCassette\Support\CassetteKey;
 
@@ -125,7 +133,7 @@ class CassetteProvider extends Provider
 
         // Replay: streaming fixtures aren't implemented yet. Fail loud so a missing
         // stream cassette never silently degrades to an empty completion.
-        throw new \RuntimeException(
+        throw new RuntimeException(
             "prism-cassette: streaming replay is not yet supported (provider={$this->providerName}, "
             ."model={$request->model()}). Use CASSETTE_MODE=passthrough for streaming completions, "
             .'or record/replay the non-streaming text() path instead.'
@@ -159,6 +167,98 @@ class CassetteProvider extends Provider
         $this->dispatchResolved('structured', $request->provider(), $request->model(), $response->usage, false, $mode, $key, $recordedAt);
 
         return $response;
+    }
+
+    /**
+     * Text-to-speech. The base Provider::textToSpeech() throws "unsupported", so — exactly like
+     * stream() — without this override any ->asAudio() against a cassette-armed provider dies before
+     * a byte. Taping is delegated to a registered {@see CassetteSerializer} (the 'tts' capability),
+     * keeping this method free of audio-specific serialization. Passthrough/record run live; replay
+     * hydrates from the cassette, or fails loud on a miss.
+     */
+    #[\Override]
+    public function textToSpeech(TextToSpeechRequest $request): TextToSpeechResponse
+    {
+        return $this->tapeAudio('tts', $request, fn () => $this->delegate->textToSpeech($request));
+    }
+
+    /**
+     * Speech-to-text. Mirror of {@see textToSpeech()} over the 'stt' capability serializer.
+     */
+    #[\Override]
+    public function speechToText(SpeechToTextRequest $request): SpeechToTextResponse
+    {
+        return $this->tapeAudio('stt', $request, fn () => $this->delegate->speechToText($request));
+    }
+
+    /**
+     * Generic record/replay/passthrough engine for a capability taped through the serializer seam.
+     *
+     * Same mode logic as text()/embeddings()/structured(), but the type-specific work (key,
+     * (de)serialization, usage, preview) is deferred to the registered serializer — so cassette
+     * gains a new modality by registering a serializer, not by editing this class. If a capability is
+     * armed with no serializer, it degrades to the stream() idiom: live for passthrough/record, loud
+     * on replay (never a silent empty response).
+     */
+    private function tapeAudio(string $capability, object $request, callable $live): object
+    {
+        $serializer = $this->serializerFor($capability);
+        [$store, $mode, $key] = $this->resolve($capability, $serializer?->key($request) ?? '');
+
+        if ($store === null) {
+            return $live(); // passthrough
+        }
+
+        if ($serializer === null) {
+            if ($mode === 'replay') {
+                throw new RuntimeException(
+                    "prism-cassette: no serializer registered for capability [{$capability}] "
+                    ."(provider={$this->providerName}); replay unavailable. Register one via "
+                    .'CassetteManager::registerSerializer(), or use CASSETTE_MODE=passthrough.'
+                );
+            }
+
+            return $live(); // record/passthrough-record without taping
+        }
+
+        if ($store->has($key)) {
+            $data = $store->get($key);
+            $response = $serializer->hydrate($data);
+            $this->dispatchResolved($capability, $serializer->provider($request), $serializer->model($request), $serializer->usage($response), true, $mode, $key, $data['recorded_at'] ?? null);
+
+            return $response;
+        }
+
+        if ($mode === 'replay') {
+            throw CassetteMissException::make($capability, $this->providerName, $serializer->model($request), $key, $serializer->preview($request));
+        }
+
+        $response = $live();
+        $recordedAt = now()->toIso8601String();
+        $store->put($key, $serializer->serialize($request, $response, $recordedAt));
+        $this->dispatchResolved($capability, $serializer->provider($request), $serializer->model($request), $serializer->usage($response), false, $mode, $key, $recordedAt);
+
+        return $response;
+    }
+
+    /**
+     * Resolve the serializer for a capability: a host/downstream registration on the manager wins;
+     * otherwise fall back to cassette's built-in Prism-native audio serializers so direct
+     * construction (no manager, e.g. unit tests) still tapes TTS/STT.
+     */
+    private function serializerFor(string $capability): ?CassetteSerializer
+    {
+        $registered = $this->manager?->serializer($capability);
+
+        if ($registered !== null) {
+            return $registered;
+        }
+
+        return match ($capability) {
+            'tts' => new TextToSpeechSerializer,
+            'stt' => new SpeechToTextSerializer,
+            default => null,
+        };
     }
 
     /**

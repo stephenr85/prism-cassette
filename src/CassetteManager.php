@@ -4,6 +4,7 @@ namespace Rushing\PrismCassette;
 
 use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
+use Rushing\PrismCassette\Contracts\CassetteSerializer;
 use Rushing\PrismCassette\Contracts\CassetteStore;
 use Rushing\PrismCassette\Contracts\NamingStrategy;
 use Rushing\PrismCassette\Drivers\FileCassetteStore;
@@ -18,7 +19,29 @@ class CassetteManager
     /** @var string[] */
     protected array $armedProviders = [];
 
+    /** @var array<string, CassetteSerializer> capability => serializer (the extension seam). */
+    protected array $serializers = [];
+
     public function __construct(protected Application $app) {}
+
+    /**
+     * Register a serializer that teaches cassette to tape a capability it doesn't natively know.
+     *
+     * This is the open-for-extension seam (see {@see CassetteSerializer}). Cassette self-registers
+     * its own Prism-native audio serializers in {@see CassetteServiceProvider}; a downstream package
+     * that owns a non-Prism capability (e.g. PrismPlus rerank) calls this from its service provider,
+     * guarded by `class_exists()` so it never hard-depends on cassette. Last registration wins, so a
+     * host can override a shipped serializer.
+     */
+    public function registerSerializer(string $capability, CassetteSerializer $serializer): void
+    {
+        $this->serializers[$capability] = $serializer;
+    }
+
+    public function serializer(string $capability): ?CassetteSerializer
+    {
+        return $this->serializers[$capability] ?? null;
+    }
 
     public function markArmed(string $providerKey): void
     {
