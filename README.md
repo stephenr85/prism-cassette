@@ -95,7 +95,7 @@ In tests, `runningUnitTests()` forces `replay` regardless of the global. To reco
 
 The armed decorator's passthrough path costs ~5–6 µs per Prism call (measured against a bare delegate) — noise next to any live LLM call, which is why there is no boot-time disarm.
 
-If boot armed **no** providers at all (misconfigured `cassette.providers`, no resolvable Prism providers), any scope that would record or replay throws `CassetteDisarmedException` instead of silently running live. Plain passthrough scopes never throw.
+If boot armed **nothing** at all — no resolvable Prism providers *and* no capability declared tape-able (see [Taping a capability Prism has no slot for](#taping-a-capability-prism-has-no-slot-for)) — any scope that would record or replay throws `CassetteDisarmedException` instead of silently running live. Plain passthrough scopes never throw.
 
 Inspect the arming state at any time:
 
@@ -103,7 +103,7 @@ Inspect the arming state at any time:
 php artisan cassette:status
 ```
 
-which prints the global mode, the armed provider keys, and each store's driver, resolved mode, and location.
+which prints the global mode, the armed provider keys, any directly-armed non-Prism capabilities, and each store's driver, resolved mode, and location.
 
 ---
 
@@ -275,6 +275,74 @@ Then register it in config:
 ```php
 'key_resolver' => MyKeyResolver::class,
 ```
+
+---
+
+## Taping a capability Prism has no slot for
+
+Everything above taps **Prism-native** modalities (text, structured, embeddings, audio) through the
+provider decorator. But some capabilities have no Prism slot at all — reranking, for example — so a
+call never passes through a `CassetteProvider`. Cassette exposes a public engine so a downstream
+package can tape its own capability through the same store, modes, and events. (Cassette's own audio
+TTS/STT taping is built on this seam — `tts` / `stt` are just capabilities with registered
+serializers.)
+
+There are two moving parts:
+
+**1. A `CassetteSerializer`** teaches cassette how to key, (de)serialize, and describe your capability's
+request/response types — the type-specific work `tape()` defers to. "Who owns the response type owns
+the serializer," so it ships from *your* package, not cassette:
+
+```php
+use Rushing\PrismCassette\Contracts\CassetteSerializer;
+
+class RerankSerializer implements CassetteSerializer
+{
+    public function key(object $request): string      { /* hash of provider + query + documents + … */ }
+    public function provider(object $request): string { /* 'voyageai' */ }
+    public function model(object $request): string    { /* the requested model, or '' for default */ }
+    public function preview(object $request): string  { /* a short human label for the cassette */ }
+
+    public function serialize(object $request, object $response, string $recordedAt): array { /* → JSON */ }
+    public function hydrate(array $data): object       { /* JSON → your typed response */ }
+}
+```
+
+A capability whose usage isn't token-based (rerank bills search-units, not tokens) can additionally
+implement `ReportsRawUsage` to surface the vendor's verbatim usage array onto `CassetteResolved`.
+
+**2. `armCapability()`** declares the capability directly tape-able. A non-Prism capability taps
+`CassetteManager::tape()` on the manager directly — not a provider decorator — so it needs **no Prism
+provider armed** at boot. But the scope-disarmed guard still has to know something is tape-able, so you
+declare it (this is what frees you from configuring a decoy Prism provider just to satisfy the guard):
+
+```php
+// In your package's service-provider boot():
+public function boot(): void
+{
+    $manager = $this->app->make(\Rushing\PrismCassette\CassetteManager::class);
+    $manager->registerSerializer('rerank', new RerankSerializer);
+    $manager->armCapability('rerank');   // now record/replay scopes work with no Prism provider armed
+}
+```
+
+**Then tape your calls** through the engine — usually from a small decorator around your driver, so
+callers who hold the driver directly are taped too:
+
+```php
+$response = app(\Rushing\PrismCassette\CassetteManager::class)->tape(
+    'rerank',                    // the capability key (must have a registered serializer)
+    $subject,                    // the request object your serializer keys on
+    fn () => $driver->rerank($request),   // the live call — invoked only on record/passthrough, never on a replay hit
+);
+```
+
+Mode, store, scope, and the `CassetteResolved` event all behave exactly as they do for Prism-native
+capabilities: a scope's `->record()`/`->replay()` wins, a replay miss throws `CassetteMissException`,
+and `cassette:status` lists your armed capability alongside the Prism providers.
+
+> Real-world example: [`rushing/laravel-prism-plus`](https://github.com/stephenr85/laravel-prism-plus)
+> tapes its rerank capability exactly this way.
 
 ---
 
