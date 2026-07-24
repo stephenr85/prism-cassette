@@ -202,6 +202,14 @@ class CassetteProvider extends Provider
      */
     private function tapeAudio(string $capability, object $request, callable $live): object
     {
+        // Production path: an armed decorator carries the manager in 'scope' mode, so defer to the
+        // shared engine on the manager — the SAME record/replay/dispatch logic PrismPlus rerank taps,
+        // no duplication. Direct construction (mode=record|replay, no manager — cassette's own unit
+        // tests) keeps the inline fallback below with its built-in tts/stt serializers.
+        if ($this->manager !== null && $this->mode === 'scope') {
+            return $this->manager->tape($capability, $request, $live);
+        }
+
         $serializer = $this->serializerFor($capability);
         [$store, $mode, $key] = $this->resolve($capability, $serializer?->key($request) ?? '');
 

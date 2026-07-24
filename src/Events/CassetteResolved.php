@@ -5,6 +5,7 @@ namespace Rushing\PrismCassette\Events;
 use Closure;
 use Prism\Prism\ValueObjects\EmbeddingsUsage;
 use Prism\Prism\ValueObjects\Usage;
+use Rushing\PrismCassette\Contracts\RefinesEventMetering;
 
 /**
  * Dispatched synchronously after every cassette interaction (record or replay).
@@ -29,5 +30,14 @@ class CassetteResolved
         public string $key,
         public ?string $recordedAt,
         public ?Closure $onResolved = null,
+        /**
+         * The provider's raw usage/billing array, verbatim, when the capability's serializer
+         * implements {@see RefinesEventMetering} (e.g. rerank's
+         * vendor `total_tokens` / `search_units`); null for capabilities whose typed {@see $usage}
+         * already carries the full signal (text/embeddings/audio).
+         *
+         * @var array<string, mixed>|null
+         */
+        public ?array $rawUsage = null,
     ) {}
 }
