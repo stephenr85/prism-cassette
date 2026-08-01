@@ -14,7 +14,7 @@ use Rushing\PrismCassette\Contracts\CassetteSerializer;
  * bytes are stored base64 exactly as the driver returns them, so replay is byte-identical. TTS
  * reports no token usage, so {@see Usage()} is always zero.
  */
-final class TextToSpeechSerializer implements CassetteSerializer
+class TextToSpeechSerializer implements CassetteSerializer
 {
     public function key(object $request): string
     {

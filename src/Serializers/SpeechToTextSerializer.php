@@ -14,7 +14,7 @@ use Rushing\PrismCassette\Contracts\CassetteSerializer;
  * fingerprinted (base64/url/filename) into the lookup key rather than stored — cassettes replay the
  * transcription, not the source clip.
  */
-final class SpeechToTextSerializer implements CassetteSerializer
+class SpeechToTextSerializer implements CassetteSerializer
 {
     public function key(object $request): string
     {
