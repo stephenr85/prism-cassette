@@ -52,6 +52,36 @@ class CassetteManager
     }
 
     /**
+     * Register a file store whose cassettes SHIP with a package — its committed `fixtures/cassettes`
+     * dir — so the package's own testbench AND any host reading through the same store name replay the
+     * identical recorded responses: one source of truth, no per-consumer re-record.
+     *
+     * A consumer package calls this from its ServiceProvider::boot(), guarded by class_exists so it
+     * never hard-depends on cassette:
+     *
+     *   if (class_exists(\Rushing\PrismCassette\Facades\Cassette::class)) {
+     *       Cassette::registerFixtureStore('composition', __DIR__.'/../fixtures/cassettes/composition');
+     *   }
+     *
+     * The package dir is the DEFAULT: a host that already configured `cassette.stores.{name}` (e.g. by
+     * publishing the cassettes with `vendor:publish` and pointing the store at the published copy) WINS
+     * — this never clobbers it. RELOCATING recorded cassettes this way is NOT the consent-gated record
+     * path: the request hashes are unchanged, so they replay byte-identically wherever the store points.
+     */
+    public function registerFixtureStore(string $name, string $path): void
+    {
+        // Host-defined store config wins (published / overridden); only default to the package dir.
+        if ($this->app['config']->get("cassette.stores.{$name}") !== null) {
+            return;
+        }
+
+        $this->app['config']->set("cassette.stores.{$name}", [
+            'driver' => 'file',
+            'path' => $path,
+        ]);
+    }
+
+    /**
      * Record/replay/passthrough engine for ANY capability, taped through its registered serializer —
      * the public, provider-agnostic counterpart to {@see CassetteProvider::tapeAudio()}.
      *

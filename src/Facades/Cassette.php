@@ -9,6 +9,7 @@ use Rushing\PrismCassette\CassetteManager;
  * @method static \Rushing\PrismCassette\Contracts\CassetteStore store(?string $name = null)
  * @method static \Rushing\PrismCassette\CassetteScope group(string $group, ?string $store = null)
  * @method static string resolveMode(?string $storeName = null)
+ * @method static void registerFixtureStore(string $name, string $path)
  */
 class Cassette extends Facade
 {
