@@ -42,7 +42,7 @@
         }
     },
     "scripts": {
-        "test": "vendor/bin/pest",
+        "test": "@php vendor/bin/pest",
         "lint": "vendor/bin/pint"
     },
     "minimum-stability": "dev",
