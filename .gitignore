@@ -3,3 +3,4 @@
 .phpunit.cache
 .vscode/
 CLAUDE.md
+composer.local.json
